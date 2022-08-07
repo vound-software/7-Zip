@@ -21,20 +21,12 @@
 
 #include "../Compress/CopyCoder.h"
 #include "../Compress/LzmaDecoder.h"
-#include "../Compress/ZlibDecoder.h"
-
-#include "Common/DummyOutStream.h"
-
-// #define SWF_UPDATE
-
-#ifdef SWF_UPDATE
-
 #include "../Compress/LzmaEncoder.h"
+#include "../Compress/ZlibDecoder.h"
 #include "../Compress/ZlibEncoder.h"
 
+#include "Common/DummyOutStream.h"
 #include "Common/HandlerOut.h"
- 
-#endif
 
 using namespace NWindows;
 
@@ -160,10 +152,8 @@ struct CItem
 class CHandler:
   public IInArchive,
   public IArchiveOpenSeq,
- #ifdef SWF_UPDATE
   public IOutArchive,
   public ISetProperties,
- #endif
   public CMyUnknownImp
 {
   CItem _item;
@@ -172,22 +162,16 @@ class CHandler:
   CMyComPtr<ISequentialInStream> _seqStream;
   CMyComPtr<IInStream> _stream;
 
- #ifdef SWF_UPDATE
   CSingleMethodProps _props;
   bool _lzmaMode;
-  #endif
 
 public:
- #ifdef SWF_UPDATE
-  MY_UNKNOWN_IMP4(IInArchive, IArchiveOpenSeq, IOutArchive, ISetProperties)
   CHandler(): _lzmaMode(false) {}
-  INTERFACE_IOutArchive(;)
-  STDMETHOD(SetProperties)(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps);
- #else
-  MY_UNKNOWN_IMP2(IInArchive, IArchiveOpenSeq)
- #endif
+  MY_UNKNOWN_IMP4(IInArchive, IArchiveOpenSeq, IOutArchive, ISetProperties)
   INTERFACE_IInArchive(;)
+  INTERFACE_IOutArchive(;)
   STDMETHOD(OpenSeq)(ISequentialInStream *stream);
+  STDMETHOD(SetProperties)(const wchar_t * const *names, const PROPVARIANT *values, UInt32 numProps);
 };
 
 static const Byte kProps[] =
@@ -432,9 +416,6 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
   COM_TRY_END
 }
 
-
-#ifdef SWF_UPDATE
-
 static HRESULT UpdateArchive(ISequentialOutStream *outStream, UInt64 size,
     bool lzmaMode, const CSingleMethodProps &props,
     IArchiveUpdateCallback *updateCallback)
@@ -595,14 +576,11 @@ STDMETHODIMP CHandler::SetProperties(const wchar_t * const *names, const PROPVAR
   return S_OK;
 }
 
-#endif
-
-
 static const Byte k_Signature[] = {
     3, 'C', 'W', 'S',
     3, 'Z', 'W', 'S' };
 
-REGISTER_ARC_I(
+REGISTER_ARC_IO(
   "SWFc", "swf", "~.swf", 0xD8,
   k_Signature,
   0,

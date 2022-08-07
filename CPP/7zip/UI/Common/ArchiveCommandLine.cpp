@@ -151,7 +151,6 @@ enum Enum
   kCaseSensitive,
   kArcNameMode,
 
-  kUseSlashMark,
   kDisableWildcardParsing,
   kElimDup,
   kFullPathMode,
@@ -295,7 +294,6 @@ static const CSwitchForm kSwitchForms[] =
   { "ssc", SWFRM_MINUS },
   { "sa",  NSwitchType::kChar, false, 1, k_ArcNameMode_PostCharSet },
   
-  { "spm", SWFRM_STRING_SINGL(0) },
   { "spd", SWFRM_SIMPLE },
   { "spe", SWFRM_MINUS },
   { "spf", SWFRM_STRING_SINGL(0) },
@@ -409,28 +407,12 @@ static bool ParseArchiveCommand(const UString &commandString, CArcCommand &comma
 // ------------------------------------------------------------------
 // filenames functions
 
-struct CNameOption
-{
-  bool Include;
-  bool WildcardMatching;
-  Byte MarkMode;
-  NRecursedType::EEnum RecursedType;
-
-  CNameOption():
-      Include(true),
-      WildcardMatching(true),
-      MarkMode(NWildcard::kMark_FileOrDir),
-      RecursedType(NRecursedType::kNonRecursed)
-      {}
-};
-
-
 static void AddNameToCensor(NWildcard::CCensor &censor,
-    const CNameOption &nop, const UString &name)
+    const UString &name, bool include, NRecursedType::EEnum type, bool wildcardMatching)
 {
   bool recursed = false;
 
-  switch (nop.RecursedType)
+  switch (type)
   {
     case NRecursedType::kWildcardOnlyRecursed:
       recursed = DoesNameContainWildcard(name);
@@ -441,12 +423,7 @@ static void AddNameToCensor(NWildcard::CCensor &censor,
     default:
       break;
   }
-
-  NWildcard::CCensorPathProps props;
-  props.Recursive = recursed;
-  props.WildcardMatching = nop.WildcardMatching;
-  props.MarkMode = nop.MarkMode;
-  censor.AddPreItem(nop.Include, name, props);
+  censor.AddPreItem(include, name, recursed, wildcardMatching);
 }
 
 static void AddRenamePair(CObjectVector<CRenamePair> *renamePairs,
@@ -477,7 +454,7 @@ static void AddRenamePair(CObjectVector<CRenamePair> *renamePairs,
 static void AddToCensorFromListFile(
     CObjectVector<CRenamePair> *renamePairs,
     NWildcard::CCensor &censor,
-    const CNameOption &nop, LPCWSTR fileName, UInt32 codePage)
+    LPCWSTR fileName, bool include, NRecursedType::EEnum type, bool wildcardMatching, UInt32 codePage)
 {
   UStringVector names;
   /*
@@ -504,12 +481,12 @@ static void AddToCensorFromListFile(
     for (unsigned i = 0; i < names.Size(); i += 2)
     {
       // change type !!!!
-      AddRenamePair(renamePairs, names[i], names[i + 1], nop.RecursedType, nop.WildcardMatching);
+      AddRenamePair(renamePairs, names[i], names[i + 1], type, wildcardMatching);
     }
   }
   else
     FOR_VECTOR (i, names)
-      AddNameToCensor(censor, nop, names[i]);
+      AddNameToCensor(censor, names[i], include, type, wildcardMatching);
 }
 
 static void AddToCensorFromNonSwitchesStrings(
@@ -518,27 +495,14 @@ static void AddToCensorFromNonSwitchesStrings(
     NWildcard::CCensor &censor,
     const UStringVector &nonSwitchStrings,
     int stopSwitchIndex,
-    const CNameOption &nop,
+    NRecursedType::EEnum type,
+    bool wildcardMatching,
     bool thereAreSwitchIncludes, UInt32 codePage)
 {
-  // another default
   if ((renamePairs || nonSwitchStrings.Size() == startIndex) && !thereAreSwitchIncludes)
-  {
-    /* for rename command: -i switch sets the mask for archive item reading.
-       if (thereAreSwitchIncludes), { we don't use UniversalWildcard. }
-       also for non-rename command: we set UniversalWildcard, only if there are no nonSwitches. */
-    // we use default fileds in (CNameOption) for UniversalWildcard.
-    CNameOption nop2;
-    // recursive mode is not important for UniversalWildcard (*)
-    // nop2.RecursedType = nop.RecursedType; // we don't need it
-    /*
-    nop2.RecursedType = NRecursedType::kNonRecursed;
-    nop2.Include = true;
-    nop2.WildcardMatching = true;
-    nop2.MarkMode = NWildcard::kMark_FileOrDir;
-    */
-    AddNameToCensor(censor, nop2, UString(kUniversalWildcard));
-  }
+    AddNameToCensor(censor, UString(kUniversalWildcard), true, type,
+        true // wildcardMatching
+        );
 
   int oldIndex = -1;
   
@@ -551,7 +515,7 @@ static void AddToCensorFromNonSwitchesStrings(
     if (s.IsEmpty())
       throw CArcCmdLineException(kEmptyFilePath);
     if (i < (unsigned)stopSwitchIndex && s[0] == kFileListID)
-      AddToCensorFromListFile(renamePairs, censor, nop, s.Ptr(1), codePage);
+      AddToCensorFromListFile(renamePairs, censor, s.Ptr(1), true, type, wildcardMatching, codePage);
     else if (renamePairs)
     {
       if (oldIndex == -1)
@@ -559,13 +523,13 @@ static void AddToCensorFromNonSwitchesStrings(
       else
       {
         // NRecursedType::EEnum type is used for global wildcard (-i! switches)
-        AddRenamePair(renamePairs, nonSwitchStrings[(unsigned)oldIndex], s, NRecursedType::kNonRecursed, nop.WildcardMatching);
+        AddRenamePair(renamePairs, nonSwitchStrings[(unsigned)oldIndex], s, NRecursedType::kNonRecursed, wildcardMatching);
         // AddRenamePair(renamePairs, nonSwitchStrings[oldIndex], s, type);
         oldIndex = -1;
       }
     }
     else
-      AddNameToCensor(censor, nop, s);
+      AddNameToCensor(censor, s, true, type, wildcardMatching);
   }
   
   if (oldIndex != -1)
@@ -593,8 +557,9 @@ static const char * const k_IncorrectMapCommand = "Incorrect Map command";
 
 static const char *ParseMapWithPaths(
     NWildcard::CCensor &censor,
-    const UString &s2,
-    const CNameOption &nop)
+    const UString &s2, bool include,
+    NRecursedType::EEnum commonRecursedType,
+    bool wildcardMatching)
 {
   UString s (s2);
   int pos = s.Find(L':');
@@ -633,7 +598,7 @@ static const char *ParseMapWithPaths(
     if (c == 0)
     {
       // MessageBoxW(0, name, L"7-Zip", 0);
-      AddNameToCensor(censor, nop, name);
+      AddNameToCensor(censor, name, include, commonRecursedType, wildcardMatching);
       name.Empty();
     }
     else
@@ -649,8 +614,9 @@ static const char *ParseMapWithPaths(
 
 static void AddSwitchWildcardsToCensor(
     NWildcard::CCensor &censor,
-    const UStringVector &strings,
-    const CNameOption &nop,
+    const UStringVector &strings, bool include,
+    NRecursedType::EEnum commonRecursedType,
+    bool wildcardMatching,
     UInt32 codePage)
 {
   const char *errorMessage = NULL;
@@ -658,6 +624,7 @@ static void AddSwitchWildcardsToCensor(
   for (i = 0; i < strings.Size(); i++)
   {
     const UString &name = strings[i];
+    NRecursedType::EEnum recursedType;
     unsigned pos = 0;
     
     if (name.Len() < kSomeCludePostStringMinSize)
@@ -666,7 +633,7 @@ static void AddSwitchWildcardsToCensor(
       break;
     }
 
-    if (!nop.Include)
+    if (!include)
     {
       if (name.IsEqualTo_Ascii_NoCase("td"))
       {
@@ -680,85 +647,20 @@ static void AddSwitchWildcardsToCensor(
       }
     }
 
-    CNameOption nop2 = nop;
-
-    bool type_WasUsed = false;
-    bool recursed_WasUsed = false;
-    bool matching_WasUsed = false;
-    bool error = false;
-
-    for (;;)
+    if (::MyCharLower_Ascii(name[pos]) == kRecursedIDChar)
     {
-      wchar_t c = ::MyCharLower_Ascii(name[pos]);
-      if (c == kRecursedIDChar)
-      {
-        if (recursed_WasUsed)
-        {
-          error = true;
-          break;
-        }
-        recursed_WasUsed = true;
+      pos++;
+      wchar_t c = name[pos];
+      int index = -1;
+      if (c <= 0x7F)
+        index = FindCharPosInString(kRecursedPostCharSet, (char)c);
+      recursedType = GetRecursedTypeFromIndex(index);
+      if (index >= 0)
         pos++;
-        c = name[pos];
-        int index = -1;
-        if (c <= 0x7F)
-          index = FindCharPosInString(kRecursedPostCharSet, (char)c);
-        nop2.RecursedType = GetRecursedTypeFromIndex(index);
-        if (index >= 0)
-        {
-          pos++;
-          continue;
-        }
-      }
-      
-      if (c == 'w')
-      {
-        if (matching_WasUsed)
-        {
-          error = true;
-          break;
-        }
-        matching_WasUsed = true;
-        nop2.WildcardMatching = true;
-        pos++;
-        if (name[pos] == '-')
-        {
-          nop2.WildcardMatching = false;
-          pos++;
-        }
-      }
-      else if (c == 'm')
-      {
-        if (type_WasUsed)
-        {
-          error = true;
-          break;
-        }
-        type_WasUsed = true;
-        pos++;
-        nop2.MarkMode = NWildcard::kMark_StrictFile;
-        c = name[pos];
-        if (c == '-')
-        {
-          nop2.MarkMode = NWildcard::kMark_FileOrDir;
-          pos++;
-        }
-        else if (c == '2')
-        {
-          nop2.MarkMode = NWildcard::kMark_StrictFile_IfWildcard;
-          pos++;
-        }
-      }
-      else
-        break;
     }
+    else
+      recursedType = commonRecursedType;
     
-    if (error)
-    {
-      errorMessage = "inorrect switch";
-      break;
-    }
-
     if (name.Len() < pos + kSomeCludeAfterRecursedPostStringMinSize)
     {
       errorMessage = "Too short switch";
@@ -766,17 +668,15 @@ static void AddSwitchWildcardsToCensor(
     }
     
     const UString tail = name.Ptr(pos + 1);
-   
-    const wchar_t c = name[pos];
-
-    if (c == kImmediateNameID)
-      AddNameToCensor(censor, nop2, tail);
-    else if (c == kFileListID)
-      AddToCensorFromListFile(NULL, censor, nop2, tail, codePage);
+    
+    if (name[pos] == kImmediateNameID)
+      AddNameToCensor(censor, tail, include, recursedType, wildcardMatching);
+    else if (name[pos] == kFileListID)
+      AddToCensorFromListFile(NULL, censor, tail, include, recursedType, wildcardMatching, codePage);
     #ifdef _WIN32
-    else if (c == kMapNameID)
+    else if (name[pos] == kMapNameID)
     {
-      errorMessage = ParseMapWithPaths(censor, tail, nop2);
+      errorMessage = ParseMapWithPaths(censor, tail, include, recursedType, wildcardMatching);
       if (errorMessage)
         break;
     }
@@ -787,7 +687,6 @@ static void AddSwitchWildcardsToCensor(
       break;
     }
   }
-
   if (i != strings.Size())
     throw CArcCmdLineException(errorMessage, strings[i]);
 }
@@ -1266,48 +1165,32 @@ void CArcCmdLineParser::Parse2(CArcCmdLineOptions &options)
   if (parser[NKey::kNameTrailReplace].ThereIs)
     g_PathTrailReplaceMode = !parser[NKey::kNameTrailReplace].WithMinus;
 
-  CNameOption nop;
-
+  NRecursedType::EEnum recursedType;
   if (parser[NKey::kRecursed].ThereIs)
-    nop.RecursedType = GetRecursedTypeFromIndex(parser[NKey::kRecursed].PostCharIndex);
+    recursedType = GetRecursedTypeFromIndex(parser[NKey::kRecursed].PostCharIndex);
+  else
+    recursedType = NRecursedType::kNonRecursed;
 
+  bool wildcardMatching = true;
   if (parser[NKey::kDisableWildcardParsing].ThereIs)
-    nop.WildcardMatching = false;
-
-  if (parser[NKey::kUseSlashMark].ThereIs)
-  {
-    const UString &s = parser[NKey::kUseSlashMark].PostStrings[0];
-    if (s.IsEmpty())
-      nop.MarkMode = NWildcard::kMark_StrictFile;
-    else if (s.IsEqualTo_Ascii_NoCase("-"))
-      nop.MarkMode = NWildcard::kMark_FileOrDir;
-    else if (s.IsEqualTo_Ascii_NoCase("2"))
-      nop.MarkMode = NWildcard::kMark_StrictFile_IfWildcard;
-    else
-      throw CArcCmdLineException("Unsupported -spm:", s);
-  }
-
+    wildcardMatching = false;
 
   options.ConsoleCodePage = FindCharset(parser, NKey::kConsoleCharSet, true, -1);
 
   UInt32 codePage = (UInt32)FindCharset(parser, NKey::kListfileCharSet, false, CP_UTF8);
 
   bool thereAreSwitchIncludes = false;
-
+  
   if (parser[NKey::kInclude].ThereIs)
   {
     thereAreSwitchIncludes = true;
-    nop.Include = true;
     AddSwitchWildcardsToCensor(options.Censor,
-        parser[NKey::kInclude].PostStrings, nop, codePage);
+        parser[NKey::kInclude].PostStrings, true, recursedType, wildcardMatching, codePage);
   }
 
   if (parser[NKey::kExclude].ThereIs)
-  {
-    nop.Include = false;
     AddSwitchWildcardsToCensor(options.Censor,
-        parser[NKey::kExclude].PostStrings, nop, codePage);
-  }
+        parser[NKey::kExclude].PostStrings, false, recursedType, wildcardMatching, codePage);
  
   unsigned curCommandIndex = kCommandIndex + 1;
   bool thereIsArchiveName = !parser[NKey::kNoArName].ThereIs &&
@@ -1315,9 +1198,9 @@ void CArcCmdLineParser::Parse2(CArcCmdLineOptions &options)
       options.Command.CommandType != NCommandType::kInfo &&
       options.Command.CommandType != NCommandType::kHash;
 
-  const bool isExtractGroupCommand = options.Command.IsFromExtractGroup();
-  const bool isExtractOrList = isExtractGroupCommand || options.Command.CommandType == NCommandType::kList;
-  const bool isRename = options.Command.CommandType == NCommandType::kRename;
+  bool isExtractGroupCommand = options.Command.IsFromExtractGroup();
+  bool isExtractOrList = isExtractGroupCommand || options.Command.CommandType == NCommandType::kList;
+  bool isRename = options.Command.CommandType == NCommandType::kRename;
 
   if ((isExtractOrList || isRename) && options.StdInMode)
     thereIsArchiveName = false;
@@ -1337,11 +1220,10 @@ void CArcCmdLineParser::Parse2(CArcCmdLineOptions &options)
     #endif
   }
 
-  nop.Include = true;
   AddToCensorFromNonSwitchesStrings(isRename ? &options.UpdateOptions.RenamePairs : NULL,
       curCommandIndex, options.Censor,
       nonSwitchStrings, parser.StopSwitchIndex,
-      nop,
+      recursedType, wildcardMatching,
       thereAreSwitchIncludes, codePage);
 
   options.YesToAll = parser[NKey::kYes].ThereIs;
@@ -1435,28 +1317,13 @@ void CArcCmdLineParser::Parse2(CArcCmdLineOptions &options)
 
     NWildcard::CCensor &arcCensor = options.arcCensor;
 
-    CNameOption nopArc;
-    // nopArc.RecursedType = NRecursedType::kNonRecursed; // default:  we don't want recursing for archives, if -r specified
-    // is it OK, external switches can disable WildcardMatching and MarcMode for arc.
-    nopArc.WildcardMatching = nop.WildcardMatching;
-    nopArc.MarkMode = nop.MarkMode;
-
     if (parser[NKey::kArInclude].ThereIs)
-    {
-      nopArc.Include = true;
-      AddSwitchWildcardsToCensor(arcCensor, parser[NKey::kArInclude].PostStrings, nopArc, codePage);
-    }
+      AddSwitchWildcardsToCensor(arcCensor, parser[NKey::kArInclude].PostStrings, true, NRecursedType::kNonRecursed, wildcardMatching, codePage);
     if (parser[NKey::kArExclude].ThereIs)
-    {
-      nopArc.Include = false;
-      AddSwitchWildcardsToCensor(arcCensor, parser[NKey::kArExclude].PostStrings, nopArc, codePage);
-    }
+      AddSwitchWildcardsToCensor(arcCensor, parser[NKey::kArExclude].PostStrings, false, NRecursedType::kNonRecursed, wildcardMatching, codePage);
 
     if (thereIsArchiveName)
-    {
-      nopArc.Include = true;
-      AddNameToCensor(arcCensor, nopArc, options.ArchiveName);
-    }
+      AddNameToCensor(arcCensor, options.ArchiveName, true, NRecursedType::kNonRecursed, wildcardMatching);
 
     arcCensor.AddPathsToCensor(NWildcard::k_RelatPath);
 
@@ -1648,7 +1515,7 @@ FString GetModuleDirPrefix()
 {
   FString s;
 
-  s = fas2fs(g_ModuleDirPrefix);
+  s = g_ModuleDirPrefix;
   if (s.IsEmpty())
     s = FTEXT(".") FSTRING_PATH_SEPARATOR;
   return s;

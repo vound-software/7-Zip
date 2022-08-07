@@ -183,7 +183,7 @@ public:
   }
 };
 
-bool IsDialogSizeOK(int xSize, int ySize, HWND hwnd = NULL);
+bool IsDialogSizeOK(int xSize, int ySize);
 
 }}
 

@@ -226,9 +226,9 @@ class CHandler: public CHandlerImg
   CByteBuffer BitMap;
   UInt32 BitMapTag;
   UInt32 NumUsedBlocks;
+  // CMyComPtr<IInStream> Stream;
   CMyComPtr<IInStream> ParentStream;
   CHandler *Parent;
-  UInt64 NumLevels;
   UString _errorMessage;
   // bool _unexpectedEnd;
 
@@ -604,12 +604,11 @@ enum
 
 static const CStatProp kArcProps[] =
 {
+  { NULL, kpidSize, VT_UI8},
   { NULL, kpidOffset, VT_UI8},
   { NULL, kpidCTime, VT_FILETIME},
   { NULL, kpidClusterSize, VT_UI8},
   { NULL, kpidMethod, VT_BSTR},
-  { NULL, kpidNumVolumes, VT_UI4},
-  { NULL, kpidTotalPhySize, VT_UI8},
   { "Parent", kpidParent, VT_BSTR},
   { NULL, kpidCreatorApp, VT_BSTR},
   { NULL, kpidHostOS, VT_BSTR},
@@ -735,21 +734,6 @@ STDMETHODIMP CHandler::GetArchiveProperty(PROPID propID, PROPVARIANT *value)
     case kpidParent: if (NeedParent()) prop = GetParentSequence(); break;
     case kpidOffset: prop = _startOffset; break;
     case kpidPhySize: prop = _phySize; break;
-    case kpidTotalPhySize:
-    {
-      const CHandler *p = this;
-      UInt64 sum = 0;
-      do
-      {
-        sum += p->_phySize;
-        p = p->Parent;
-      }
-      while (p);
-      prop = sum;
-      break;
-    }
-    case kpidNumVolumes: if (NumLevels != 1) prop = (UInt32)NumLevels; break;
-
     /*
     case kpidErrorFlags:
     {
@@ -778,7 +762,6 @@ HRESULT CHandler::Open2(IInStream *stream, CHandler *child, IArchiveOpenCallback
   
   RINOK(Open3());
   
-  NumLevels = 1;
   if (child && memcmp(child->Dyn.ParentId, Footer.Id, 16) != 0)
     return S_FALSE;
   if (Footer.Type != kDiskType_Diff)
@@ -843,10 +826,6 @@ HRESULT CHandler::Open2(IInStream *stream, CHandler *child, IArchiveOpenCallback
         // we must show that error code
       }
     }
-    if (res == S_OK)
-    {
-      NumLevels = Parent->NumLevels + 1;
-    }
   }
   {
     const CHandler *p = this;
@@ -866,19 +845,16 @@ HRESULT CHandler::Open2(IInStream *stream, CHandler *child, IArchiveOpenCallback
 
 void CHandler::CloseAtError()
 {
-  // CHandlerImg:
-  Stream.Release();
-  Clear_HandlerImg_Vars();
-
   _phySize = 0;
-  NumLevels = 0;
   Bat.Clear();
   NumUsedBlocks = 0;
   Parent = NULL;
+  Stream.Release();
   ParentStream.Release();
   Dyn.Clear();
   _errorMessage.Empty();
   // _unexpectedEnd = false;
+  _imgExt = NULL;
 }
 
 STDMETHODIMP CHandler::Close()
@@ -915,7 +891,7 @@ STDMETHODIMP CHandler::GetProperty(UInt32 /* index */, PROPID propID, PROPVARIAN
 STDMETHODIMP CHandler::GetStream(UInt32 /* index */, ISequentialInStream **stream)
 {
   COM_TRY_BEGIN
-  *stream = NULL;
+  *stream = 0;
   if (Footer.IsFixed())
   {
     CLimitedInStream *streamSpec = new CLimitedInStream;

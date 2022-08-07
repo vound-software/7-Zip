@@ -178,7 +178,7 @@ static int APIENTRY WinMain2()
   v1.Add(fs2us(fullPath));
   v2.Add(fs2us(fullPath));
   NWildcard::CCensorNode wildcardCensor;
-  wildcardCensor.Add_Wildcard();
+  wildcardCensor.AddItem(true, L"*", true, true, true, true);
 
   bool messageWasDisplayed = false;
   result = ExtractGUI(codecs,

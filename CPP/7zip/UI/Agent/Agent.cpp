@@ -1887,23 +1887,23 @@ STDMETHODIMP CAgent::GetArcProp(UInt32 level, PROPID propID, PROPVARIANT *value)
         break;
       case kpidErrorFlags:
       {
-        const UInt32 flags = arc.ErrorInfo.GetErrorFlags();
+        UInt32 flags = arc.ErrorInfo.GetErrorFlags();
         if (flags != 0)
           prop = flags;
         break;
       }
       case kpidWarningFlags:
       {
-        const UInt32 flags = arc.ErrorInfo.GetWarningFlags();
+        UInt32 flags = arc.ErrorInfo.GetWarningFlags();
         if (flags != 0)
           prop = flags;
         break;
       }
       case kpidOffset:
       {
-        const Int64 v = arc.GetGlobalOffset();
+        Int64 v = arc.GetGlobalOffset();
         if (v != 0)
-          prop.Set_Int64(v);
+          prop = v;
         break;
       }
       case kpidTailSize:

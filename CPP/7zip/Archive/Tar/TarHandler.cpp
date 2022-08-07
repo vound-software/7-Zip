@@ -107,7 +107,8 @@ STDMETHODIMP CHandler::GetArchiveProperty(PROPID propID, PROPVARIANT *value)
 
     case kpidCharacts:
     {
-      prop = _encodingCharacts.GetCharactsString();
+      AString s = _encodingCharacts.GetCharactsString();
+      prop = s;
       break;
     }
   }

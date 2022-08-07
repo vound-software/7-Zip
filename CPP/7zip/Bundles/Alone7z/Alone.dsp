@@ -1942,6 +1942,10 @@ SOURCE=..\..\..\..\C\Threads.c
 
 SOURCE=..\..\..\..\C\Threads.h
 # End Source File
+# Begin Source File
+
+SOURCE=..\..\..\..\C\Types.h
+# End Source File
 # End Group
 # Begin Group "Crypto"
 

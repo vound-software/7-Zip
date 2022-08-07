@@ -15,6 +15,17 @@ HRESULT COutArchive::WriteBytes(const void *data, unsigned size)
   return WriteStream(m_Stream, data, size);
 }
 
+static void MyStrNCpy(char *dest, const char *src, unsigned size)
+{
+  for (unsigned i = 0; i < size; i++)
+  {
+    char c = src[i];
+    dest[i] = c;
+    if (c == 0)
+      break;
+  }
+}
+
 static bool WriteOctal_8(char *s, UInt32 val)
 {
   const unsigned kNumDigits = 8 - 1;
@@ -28,12 +39,6 @@ static bool WriteOctal_8(char *s, UInt32 val)
   return true;
 }
 
-static void WriteBin_64bit(char *s, UInt64 val)
-{
-  for (unsigned i = 0; i < 8; i++, val <<= 8)
-    s[i] = (char)(val >> 56);
-}
-
 static void WriteOctal_12(char *s, UInt64 val)
 {
   const unsigned kNumDigits = 12 - 1;
@@ -42,7 +47,8 @@ static void WriteOctal_12(char *s, UInt64 val)
     // GNU extension;
     s[0] = (char)(Byte)0x80;
     s[1] = s[2] = s[3] = 0;
-    WriteBin_64bit(s + 4, val);
+    for (unsigned i = 0; i < 8; i++, val <<= 8)
+      s[4 + i] = (char)(val >> 56);
     return;
   }
   for (unsigned i = 0; i < kNumDigits; i++)
@@ -60,32 +66,19 @@ static void WriteOctal_12_Signed(char *s, Int64 val)
     return;
   }
   s[0] = s[1] = s[2] = s[3] = (char)(Byte)0xFF;
-  WriteBin_64bit(s + 4, val);
+  for (unsigned i = 0; i < 8; i++, val <<= 8)
+    s[4 + i] = (char)(val >> 56);
 }
 
-static void CopyString(char *dest, const AString &src, unsigned maxSize)
+static bool CopyString(char *dest, const AString &src, unsigned maxSize)
 {
-  unsigned len = src.Len();
-  if (len == 0)
-    return;
-  // 21.07: we don't require additional 0 character at the end
-  if (len > maxSize)
-  {
-    len = maxSize;
-    // return false;
-  }
-  memcpy(dest, src.Ptr(), len);
-  // return true;
+  if (src.Len() >= maxSize)
+    return false;
+  MyStringCopy(dest, (const char *)src);
+  return true;
 }
 
 #define RETURN_IF_NOT_TRUE(x) { if (!(x)) return E_FAIL; }
-
-#define COPY_STRING_CHECK(dest, src, size) \
-    CopyString(dest, src, size);   dest += (size);
-
-#define WRITE_OCTAL_8_CHECK(dest, src) \
-    RETURN_IF_NOT_TRUE(WriteOctal_8(dest, src));
-    
 
 HRESULT COutArchive::WriteHeaderReal(const CItem &item)
 {
@@ -93,34 +86,37 @@ HRESULT COutArchive::WriteHeaderReal(const CItem &item)
   memset(record, 0, NFileHeader::kRecordSize);
   char *cur = record;
 
-  COPY_STRING_CHECK (cur, item.Name, NFileHeader::kNameSize);
+  if (item.Name.Len() > NFileHeader::kNameSize)
+    return E_FAIL;
+  MyStrNCpy(cur, item.Name, NFileHeader::kNameSize);
+  cur += NFileHeader::kNameSize;
 
-  WRITE_OCTAL_8_CHECK (cur, item.Mode);  cur += 8;
-  WRITE_OCTAL_8_CHECK (cur, item.UID);   cur += 8;
-  WRITE_OCTAL_8_CHECK (cur, item.GID);   cur += 8;
+  RETURN_IF_NOT_TRUE(WriteOctal_8(cur, item.Mode)); cur += 8;
+  RETURN_IF_NOT_TRUE(WriteOctal_8(cur, item.UID)); cur += 8;
+  RETURN_IF_NOT_TRUE(WriteOctal_8(cur, item.GID)); cur += 8;
 
   WriteOctal_12(cur, item.PackSize); cur += 12;
   WriteOctal_12_Signed(cur, item.MTime); cur += 12;
   
-  memset(cur, ' ', 8); // checksum field
+  memset(cur, ' ', 8);
   cur += 8;
 
   *cur++ = item.LinkFlag;
 
-  COPY_STRING_CHECK (cur, item.LinkName, NFileHeader::kNameSize);
+  RETURN_IF_NOT_TRUE(CopyString(cur, item.LinkName, NFileHeader::kNameSize));
+  cur += NFileHeader::kNameSize;
 
   memcpy(cur, item.Magic, 8);
   cur += 8;
 
-  COPY_STRING_CHECK (cur, item.User, NFileHeader::kUserNameSize);
-  COPY_STRING_CHECK (cur, item.Group, NFileHeader::kGroupNameSize);
+  RETURN_IF_NOT_TRUE(CopyString(cur, item.User, NFileHeader::kUserNameSize));
+  cur += NFileHeader::kUserNameSize;
+  RETURN_IF_NOT_TRUE(CopyString(cur, item.Group, NFileHeader::kGroupNameSize));
+  cur += NFileHeader::kGroupNameSize;
 
-  if (item.DeviceMajorDefined)
-    WRITE_OCTAL_8_CHECK (cur, item.DeviceMajor);
-  cur += 8;
-  if (item.DeviceMinorDefined)
-    WRITE_OCTAL_8_CHECK (cur, item.DeviceMinor);
-  cur += 8;
+
+  if (item.DeviceMajorDefined) RETURN_IF_NOT_TRUE(WriteOctal_8(cur, item.DeviceMajor)); cur += 8;
+  if (item.DeviceMinorDefined) RETURN_IF_NOT_TRUE(WriteOctal_8(cur, item.DeviceMinor)); cur += 8;
 
   if (item.IsSparse())
   {
@@ -144,7 +140,7 @@ HRESULT COutArchive::WriteHeaderReal(const CItem &item)
     /* we use GNU TAR scheme:
        checksum field is formatted differently from the
        other fields: it has [6] digits, a null, then a space. */
-    // WRITE_OCTAL_8_CHECK(record + 148, checkSum);
+    // RETURN_IF_NOT_TRUE(WriteOctal_8(record + 148, checkSum));
     const unsigned kNumDigits = 6;
     for (unsigned i = 0; i < kNumDigits; i++)
     {
@@ -176,42 +172,27 @@ HRESULT COutArchive::WriteHeaderReal(const CItem &item)
   return S_OK;
 }
 
-
-/* OLD_GNU_TAR: writes short name with    zero at the end
-   NEW_GNU_TAR: writes short name without zero at the end */
-
-static const unsigned kNameSize_Max =
-    NFileHeader::kNameSize;     // NEW_GNU_TAR / 7-Zip 21.07
-    // NFileHeader::kNameSize - 1; // OLD_GNU_TAR / old 7-Zip
-
-#define DOES_NAME_FIT_IN_FIELD(name) ((name).Len() <= kNameSize_Max)
-
 HRESULT COutArchive::WriteHeader(const CItem &item)
 {
-  if (DOES_NAME_FIT_IN_FIELD(item.Name) &&
-      DOES_NAME_FIT_IN_FIELD(item.LinkName))
+  unsigned nameSize = item.Name.Len();
+  unsigned linkSize = item.LinkName.Len();
+
+  /* There two versions of GNU tar:
+    OLDGNU_FORMAT: it writes short name and zero at the  end
+    GNU_FORMAT:    it writes only short name without zero at the end
+    we write it as OLDGNU_FORMAT with zero at the end */
+
+  if (nameSize < NFileHeader::kNameSize &&
+      linkSize < NFileHeader::kNameSize)
     return WriteHeaderReal(item);
 
-  // here we can get all fields from main (item) or create new empty item
-  /*
-  CItem mi;
-  mi.SetDefaultWriteFields();
-  */
-  
   CItem mi = item;
-  mi.LinkName.Empty();
-  // SparseBlocks will be ignored by IsSparse()
-  // mi.SparseBlocks.Clear();
-
   mi.Name = NFileHeader::kLongLink;
-  // 21.07 : we set Mode and MTime props as in GNU TAR:
-  mi.Mode = 0644; // octal
-  mi.MTime = 0;
-
+  mi.LinkName.Empty();
   for (int i = 0; i < 2; i++)
   {
     const AString *name;
-    // We suppose that GNU TAR also writes item for long link before item for LongName?
+    // We suppose that GNU tar also writes item for long link before item for LongName?
     if (i == 0)
     {
       mi.LinkFlag = NFileHeader::NLinkFlag::kGnu_LongLink;
@@ -222,26 +203,21 @@ HRESULT COutArchive::WriteHeader(const CItem &item)
       mi.LinkFlag = NFileHeader::NLinkFlag::kGnu_LongName;
       name = &item.Name;
     }
-    if (DOES_NAME_FIT_IN_FIELD(*name))
+    if (name->Len() < NFileHeader::kNameSize)
       continue;
-    // GNU TAR writes null character after NAME to file. We do same here:
-    const unsigned nameStreamSize = name->Len() + 1;
+    unsigned nameStreamSize = name->Len() + 1;
     mi.PackSize = nameStreamSize;
     RINOK(WriteHeaderReal(mi));
-    RINOK(WriteBytes(name->Ptr(), nameStreamSize));
+    RINOK(WriteBytes((const char *)*name, nameStreamSize));
     RINOK(FillDataResidual(nameStreamSize));
   }
 
-  // 21.07: WriteHeaderReal() writes short part of (Name) and (LinkName).
-  return WriteHeaderReal(item);
-  /*
   mi = item;
-  if (!DOES_NAME_FIT_IN_FIELD(mi.Name))
-    mi.Name.SetFrom(item.Name, kNameSize_Max);
-  if (!DOES_NAME_FIT_IN_FIELD(mi.LinkName))
-    mi.LinkName.SetFrom(item.LinkName, kNameSize_Max);
+  if (mi.Name.Len() >= NFileHeader::kNameSize)
+    mi.Name.SetFrom(item.Name, NFileHeader::kNameSize - 1);
+  if (mi.LinkName.Len() >= NFileHeader::kNameSize)
+    mi.LinkName.SetFrom(item.LinkName, NFileHeader::kNameSize - 1);
   return WriteHeaderReal(mi);
-  */
 }
 
 HRESULT COutArchive::FillDataResidual(UInt64 dataSize)
@@ -259,17 +235,7 @@ HRESULT COutArchive::WriteFinishHeader()
 {
   Byte record[NFileHeader::kRecordSize];
   memset(record, 0, NFileHeader::kRecordSize);
-
-  const unsigned kNumFinishRecords = 2;
-
-  /* GNU TAR by default uses --blocking-factor=20 (512 * 20 = 10 KiB)
-     we also can use cluster alignment:
-  const unsigned numBlocks = (unsigned)(Pos / NFileHeader::kRecordSize) + kNumFinishRecords;
-  const unsigned kNumClusterBlocks = (1 << 3); // 8 blocks = 4 KiB
-  const unsigned numFinishRecords = kNumFinishRecords + ((kNumClusterBlocks - numBlocks) & (kNumClusterBlocks - 1));
-  */
-  
-  for (unsigned i = 0; i < kNumFinishRecords; i++)
+  for (unsigned i = 0; i < 2; i++)
   {
     RINOK(WriteBytes(record, NFileHeader::kRecordSize));
   }

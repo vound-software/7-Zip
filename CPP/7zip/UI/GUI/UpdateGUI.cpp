@@ -112,13 +112,9 @@ static void ParseAndAddPropertires(CObjectVector<CProperty> &properties,
   SplitString(propertiesString, strings);
   FOR_VECTOR (i, strings)
   {
-    UString s = strings[i];
-    if (s.Len() > 2
-        && s[0] == '-'
-        && MyCharLower_Ascii(s[1]) == 'm')
-      s.DeleteFrontal(2);
+    const UString &s = strings[i];
     CProperty property;
-    const int index = s.Find(L'=');
+    int index = s.Find(L'=');
     if (index < 0)
       property.Name = s;
     else

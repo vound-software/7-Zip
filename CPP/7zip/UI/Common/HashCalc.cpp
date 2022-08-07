@@ -900,7 +900,7 @@ bool CHashPair::Parse(const char *s)
       return false;
     if (escape)
     {
-      const AString temp (Name);
+      AString temp = Name;
       return CSum_Name_EscapeToOriginal(temp, Name);
     }
     return true;

@@ -403,14 +403,14 @@ STDMETHODIMP CHandler::Close()
 {
   _table.Free();
   _phySize = 0;
+  _size = 0;
   _isArc = false;
   _unsupported = false;
 
   for (unsigned i = 0; i < kNumGuids; i++)
     memset(Guids[i], 0, 16);
 
-  // CHandlerImg:
-  Clear_HandlerImg_Vars();
+  _imgExt = NULL;
   Stream.Release();
   return S_OK;
 }

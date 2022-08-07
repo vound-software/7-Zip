@@ -1430,6 +1430,7 @@ HRESULT CExtent::Open3(IInStream *stream, IArchiveOpenCallback *openCallback,
 STDMETHODIMP CHandler::Close()
 {
   _phySize = 0;
+  _size = 0;
   
   _cacheCluster = (UInt64)(Int64)-1;
   _cacheExtent = (unsigned)(int)-1;
@@ -1449,10 +1450,8 @@ STDMETHODIMP CHandler::Close()
   _descriptorBuf.Free();
   _descriptor.Clear();
 
-  // CHandlerImg:
-  Clear_HandlerImg_Vars();
-  Stream.Release();
-
+  _imgExt = NULL;
+  Stream.Release(); // Stream vriable is unused
   _extents.Clear();
   return S_OK;
 }

@@ -486,8 +486,6 @@ void CFileMenu::Load(HMENU hMenu, unsigned startPos)
   ReadRegDiff(diffPath);
 
   unsigned numRealItems = startPos;
-
-  const bool isBigScreen = NControl::IsDialogSizeOK(40, 200, g_HWND);
   
   for (unsigned i = 0;; i++)
   {
@@ -569,6 +567,8 @@ void CFileMenu::Load(HMENU hMenu, unsigned startPos)
 
       if (item.wID == IDM_ALT_STREAMS)
         disable = !isAltStreamsSupported;
+
+      bool isBigScreen = NControl::IsDialogSizeOK(40, 200);
 
       if (!isBigScreen && (disable || item.IsSeparator()))
         continue;

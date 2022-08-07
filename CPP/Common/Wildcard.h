@@ -52,25 +52,6 @@ struct CItem
 };
 
 
-
-const Byte kMark_FileOrDir = 0;
-const Byte kMark_StrictFile = 1;
-const Byte kMark_StrictFile_IfWildcard = 2;
-
-struct CCensorPathProps
-{
-  bool Recursive;
-  bool WildcardMatching;
-  Byte MarkMode;
-  
-  CCensorPathProps():
-      Recursive(false),
-      WildcardMatching(true),
-      MarkMode(kMark_FileOrDir)
-      {}
-};
-
-
 class CCensorNode  MY_UNCOPYABLE
 {
   CCensorNode *Parent;
@@ -113,19 +94,8 @@ public:
   int FindSubNode(const UString &path) const;
 
   void AddItem(bool include, CItem &item, int ignoreWildcardIndex = -1);
-  // void AddItem(bool include, const UString &path, const CCensorPathProps &props);
-  void Add_Wildcard()
-  {
-    CItem item;
-    item.PathParts.Add(L"*");
-    item.Recursive = false;
-    item.ForFile = true;
-    item.ForDir = true;
-    item.WildcardMatching = true;
-    AddItem(
-        true // include
-        , item);
-  }
+  void AddItem(bool include, const UString &path, bool recursive, bool forFile, bool forDir, bool wildcardMatching);
+  void AddItem2(bool include, const UString &path, bool recursive, bool wildcardMatching);
 
   // NeedCheckSubDirs() returns true, if there are IncludeItems rules that affect items in subdirs
   bool NeedCheckSubDirs() const;
@@ -174,11 +144,14 @@ struct CCensorPath
 {
   UString Path;
   bool Include;
-  CCensorPathProps Props;
+  bool Recursive;
+  bool WildcardMatching;
 
   CCensorPath():
-      Include(true)
-      {}
+    Include(true),
+    Recursive(false),
+    WildcardMatching(true)
+    {}
 };
 
 
@@ -201,28 +174,19 @@ public:
   bool AllAreRelative() const
     { return (Pairs.Size() == 1 && Pairs.Front().Prefix.IsEmpty()); }
   
-  void AddItem(ECensorPathMode pathMode, bool include, const UString &path, const CCensorPathProps &props);
+  void AddItem(ECensorPathMode pathMode, bool include, const UString &path, bool recursive, bool wildcardMatching);
   // bool CheckPath(bool isAltStream, const UString &path, bool isFile) const;
   void ExtendExclude();
 
   void AddPathsToCensor(NWildcard::ECensorPathMode censorPathMode);
-  void AddPreItem(bool include, const UString &path, const CCensorPathProps &props);
-
-  void AddPreItem_NoWildcard(const UString &path)
+  void AddPreItem(bool include, const UString &path, bool recursive, bool wildcardMatching);
+  void AddPreItem(const UString &path)
   {
-    CCensorPathProps props;
-    props.WildcardMatching = false;
-    AddPreItem(
-        true,  // include
-        path, props);
+    AddPreItem(true, path, false, false);
   }
   void AddPreItem_Wildcard()
   {
-    CCensorPathProps props;
-    // props.WildcardMatching = true;
-    AddPreItem(
-        true,  // include
-        UString("*"), props);
+    AddPreItem(true, UString("*"), false, true);
   }
 };
 
