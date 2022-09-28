@@ -413,8 +413,12 @@ HRESULT CDecoder::Decode(
         isEncrypted = true;
         if (!getTextPassword)
           return E_NOTIMPL;
-        CMyComBSTR passwordBSTR;
-        RINOK(getTextPassword->CryptoGetTextPassword(&passwordBSTR));
+		
+		BSTR tmp = NULL;
+		RINOK(getTextPassword->CryptoGetTextPassword(&tmp));
+		CMyComBSTR passwordBSTR;
+		passwordBSTR = tmp; tmp = NULL;
+
         passwordIsDefined = true;
         password.Empty();
         size_t len = 0;

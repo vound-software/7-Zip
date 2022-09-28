@@ -624,8 +624,12 @@ public:
 
 static HRESULT MySetPassword(ICryptoGetTextPassword *getTextPassword, NCrypto::NRar5::CDecoder *cryptoDecoderSpec)
 {
+  
+  BSTR tmp = NULL;
+  RINOK(getTextPassword->CryptoGetTextPassword(&tmp));
   CMyComBSTR password;
-  RINOK(getTextPassword->CryptoGetTextPassword(&password));
+  password = tmp; tmp = NULL;
+
   AString utf8;
   const unsigned kPasswordLen_MAX = 127;
   UString unicode = (LPCOLESTR)password;

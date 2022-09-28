@@ -998,9 +998,14 @@ HRESULT CZipDecoder::Decode(
     
     if (getTextPassword)
     {
-      CMyComBSTR password;
-      RINOK(getTextPassword->CryptoGetTextPassword(&password));
-      AString charPassword;
+    
+	  BSTR tmp = NULL;
+	  RINOK(getTextPassword->CryptoGetTextPassword(&tmp));
+	  CMyComBSTR password;
+	  password = tmp; tmp = NULL;
+
+	  
+	  AString charPassword;
       if (password)
       {
         UnicodeStringToMultiByte2(charPassword, (const wchar_t *)password, CP_ACP);

@@ -531,9 +531,13 @@ HRESULT CInArchive::GetNextItem(CItem &item, ICryptoGetTextPassword *getTextPass
         return S_FALSE;
       m_Position += kSaltSize;
       RINOK(m_RarAESSpec->SetDecoderProperties2(salt, kSaltSize))
-      // Password
-      CMyComBSTR password;
-      RINOK(getTextPassword->CryptoGetTextPassword(&password))
+      
+	  // Password
+      BSTR tmp = NULL;
+	  RINOK(getTextPassword->CryptoGetTextPassword(&tmp))
+      CMyComBSTR password;      
+	  password = tmp; tmp = NULL;
+      
       unsigned len = 0;
       if (password)
         len = MyStringLen(password);
@@ -1617,8 +1621,11 @@ STDMETHODIMP CHandler::Extract(const UInt32 *indices, UInt32 numItems,
 
       // if (getTextPassword)
       {
+
+		BSTR tmp = NULL;
+        RINOK(getTextPassword->CryptoGetTextPassword(&tmp));
         CMyComBSTR password;
-        RINOK(getTextPassword->CryptoGetTextPassword(&password));
+		password = tmp;
         
         if (item.UnPackVersion >= 29)
         {
