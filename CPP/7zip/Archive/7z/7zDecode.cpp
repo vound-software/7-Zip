@@ -417,6 +417,9 @@ HRESULT CDecoder::Decode(
         if (!getTextPassword)
           return E_NOTIMPL;
         CMyComBSTR_Wipe passwordBSTR;
+
+        passwordBSTR.Wipe_and_Free();
+
         RINOK(getTextPassword->CryptoGetTextPassword(&passwordBSTR));
         passwordIsDefined = true;
         password.Wipe_and_Empty();
