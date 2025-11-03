@@ -190,10 +190,21 @@ inline HRESULT StringToBstr(LPCOLESTR src, BSTR *bstr)
 class CMyComBSTR
 {
   BSTR m_str;
+  boolean alocated;
+
   Z7_CLASS_NO_COPY(CMyComBSTR)
 public:
-  CMyComBSTR(): m_str(NULL) {}
-  ~CMyComBSTR() { ::SysFreeString(m_str); }
+    CMyComBSTR() : m_str(NULL){ alocated = false; }
+  
+    ~CMyComBSTR() {
+
+      if (alocated) {
+          ::SysFreeString(m_str);
+          alocated = false;
+      }
+
+  }
+
   BSTR* operator&() { return &m_str; }
   operator LPCOLESTR() const { return m_str; }
   // operator bool() const { return m_str != NULL; }
@@ -201,17 +212,22 @@ public:
 
   void Wipe_and_Free()
   {
-    if (m_str)
-    {
-      memset(m_str, 0, ::SysStringLen(m_str) * sizeof(*m_str));
-      Empty();
-    }
+      if (m_str)
+      {
+        memset(m_str, 0, ::SysStringLen(m_str) * sizeof(*m_str));
+        Empty();
+      }
+
   }
 
 private:
   // operator BSTR() const { return m_str; }
 
-  CMyComBSTR(LPCOLESTR src) { m_str = ::SysAllocString(src); }
+    CMyComBSTR(LPCOLESTR src) { 
+        m_str = ::SysAllocString(src);
+        alocated = true; 
+    }
+
   // CMyComBSTR(int nSize) { m_str = ::SysAllocStringLen(NULL, nSize); }
   // CMyComBSTR(int nSize, LPCOLESTR sz) { m_str = ::SysAllocStringLen(sz, nSize);  }
   // CMyComBSTR(const CMyComBSTR& src) { m_str = src.MyCopy(); }
@@ -241,9 +257,16 @@ private:
   
   CMyComBSTR& operator=(LPCOLESTR src)
   {
-    ::SysFreeString(m_str);
-    m_str = ::SysAllocString(src);
-    return *this;
+  
+      if (alocated) {
+          ::SysFreeString(m_str);
+          alocated = false;
+      }
+      
+      m_str = ::SysAllocString(src);      
+      alocated = true;
+
+      return *this;
   }
   
   unsigned Len() const { return ::SysStringLen(m_str); }
@@ -273,9 +296,13 @@ private:
 
   void Empty()
   {
-    ::SysFreeString(m_str);
-    m_str = NULL;
+      if (alocated) {
+          ::SysFreeString(m_str);
+          alocated = false;
+      }
+      m_str = NULL;
   }
+
 };
 
 

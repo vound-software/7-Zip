@@ -4,3 +4,4 @@ set MY_STATIC_LINK=1
 set CPU=AMD64
 
 nmake
+
